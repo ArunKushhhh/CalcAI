@@ -3,7 +3,6 @@ import { SWATCHES } from "../../constants";
 import { ColorSwatch, Group } from "@mantine/core";
 import { Button } from "../../components/ui/button";
 import axios from "axios";
-import { url } from "inspector";
 import { data } from "react-router-dom";
 
 interface Response {
@@ -131,14 +130,14 @@ export default function Home() {
         >
           Calculate
         </Button>
-        <Button
+        {/* <Button
           onClick={() => setReset(true)}
           className="z-20 bg-black text-white"
           variant="default"
           color="black"
         >
           Reset
-        </Button>
+        </Button> */}
       </div>
       <canvas
         ref={canvasRef}
