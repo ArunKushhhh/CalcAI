@@ -28,6 +28,8 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [draggedItemId, setDraggedItemId] = useState<string>("");
+  const [canvasHistory, setCanvasHistory] = useState<string[]>([]);
+  const [historyStep, setHistoryStep] = useState(-1);
 
   useEffect(() => {
     if (reset) {
@@ -35,6 +37,8 @@ export default function Home() {
       setResults([]);
       setDictOfVars({});
       setReset(false);
+      setCanvasHistory([]);
+      setHistoryStep(-1);
     }
   }, [reset]);
 
@@ -56,13 +60,16 @@ export default function Home() {
         ctx.lineCap = "round";
         ctx.lineWidth = 3;
         canvas.style.background = "black";
+
+        saveCanvasState();
       }
     }
 
     // Load MathJax
     if (!window.MathJax) {
       const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/config/TeX-MML-AM_CHTML.js";
+      script.src =
+        "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/config/TeX-MML-AM_CHTML.js";
       script.async = true;
       document.head.appendChild(script);
 
@@ -97,10 +104,44 @@ export default function Home() {
     if (canvas) {
       return {
         x: canvas.width / 2,
-        y: canvas.height / 2
+        y: canvas.height / 2,
       };
     }
     return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  };
+
+  //saving canvas state for undo functionality
+  const saveCanvasState = () => {
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const dataUrl = canvas.toDataURL();
+      setCanvasHistory((prev) => {
+        const newHistory = prev.slice(0, historyStep + 1);
+        newHistory.push(dataUrl);
+        return newHistory;
+      });
+      setHistoryStep((prev) => prev + 1);
+    }
+  };
+
+  //undo function
+  const undo = () => {
+    if (historyStep > 0) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          const prevStep = historyStep - 1;
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+          };
+          img.src = canvasHistory[prevStep];
+          setHistoryStep(prevStep);
+        }
+      }
+    }
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -117,6 +158,7 @@ export default function Home() {
 
   const stopDrawing = () => {
     setIsDrawing(false);
+    saveCanvasState();
   };
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -155,14 +197,14 @@ export default function Home() {
 
       const resp = response.data;
       console.log("Response: ", resp);
-      
+
       const calculations = resp.data || [];
-      
+
       if (Array.isArray(calculations)) {
         // Handle variable assignments
         calculations.forEach((data: Response) => {
           if (data.assign === true) {
-            setDictOfVars(prev => ({
+            setDictOfVars((prev) => ({
               ...prev,
               [data.expr]: data.result,
             }));
@@ -177,11 +219,11 @@ export default function Home() {
           expression: data.expr,
           answer: data.result,
           id: generateUniqueId(),
-          position: { ...centerPosition }
+          position: { ...centerPosition },
         }));
 
         // Add new results to existing ones
-        setResults(prev => [...prev, ...newResults]);
+        setResults((prev) => [...prev, ...newResults]);
 
         // Clear the canvas after processing
         setTimeout(() => {
@@ -192,7 +234,9 @@ export default function Home() {
       }
     } catch (error) {
       console.error("Error sending data:", error);
-      alert("Failed to process calculation. Please check if the backend is running.");
+      alert(
+        "Failed to process calculation. Please check if the backend is running."
+      );
     }
   };
 
@@ -202,6 +246,8 @@ export default function Home() {
       const ctx = canvas.getContext("2d");
       if (ctx) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setCanvasHistory([canvas.toDataURL()]);
+        setHistoryStep(0);
       }
     }
   };
@@ -212,23 +258,25 @@ export default function Home() {
     const rect = e.currentTarget.getBoundingClientRect();
     setDragOffset({
       x: e.clientX - rect.left,
-      y: e.clientY - rect.top
+      y: e.clientY - rect.top,
     });
   };
 
   const handleMouseMove = (e: MouseEvent) => {
     if (isDragging && draggedItemId) {
-      setResults(prev => prev.map(result => 
-        result.id === draggedItemId 
-          ? {
-              ...result,
-              position: {
-                x: e.clientX - dragOffset.x,
-                y: e.clientY - dragOffset.y
+      setResults((prev) =>
+        prev.map((result) =>
+          result.id === draggedItemId
+            ? {
+                ...result,
+                position: {
+                  x: e.clientX - dragOffset.x,
+                  y: e.clientY - dragOffset.y,
+                },
               }
-            }
-          : result
-      ));
+            : result
+        )
+      );
     }
   };
 
@@ -239,11 +287,11 @@ export default function Home() {
 
   useEffect(() => {
     if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
       return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
       };
     }
   }, [isDragging, dragOffset, draggedItemId]);
@@ -254,21 +302,29 @@ export default function Home() {
       setResults([]);
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
 
   return (
     <>
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <Button
           onClick={() => setReset(true)}
           className="z-20 bg-black text-white cursor-pointer"
           variant="default"
         >
           Reset
+        </Button>
+        <Button
+          onClick={undo}
+          disabled={historyStep <= 0}
+          className="z-20 bg-black text-white cursor-pointer"
+          variant="default"
+        >
+          Undo
         </Button>
         <Group className="z-20">
           {SWATCHES.map((swatchColor: string) => (
@@ -305,7 +361,7 @@ export default function Home() {
           style={{
             left: result.position.x,
             top: result.position.y,
-            zIndex: 30
+            zIndex: 30,
           }}
           onMouseDown={(e) => handleMouseDown(e, result.id)}
         >
