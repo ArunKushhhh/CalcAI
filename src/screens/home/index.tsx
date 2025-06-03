@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { SWATCHES } from "../../constants";
 import { ColorSwatch, Group } from "@mantine/core";
 import { Button } from "../../components/ui/button";
-import Draggable from "react-draggable";
 import axios from "axios";
 
 interface Response {
@@ -14,40 +13,38 @@ interface Response {
 interface GeneratedImage {
   expression: string;
   answer: string;
+  id: string;
+  position: { x: number; y: number };
 }
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [color, setColor] = useState("rgb(255, 255, 255)");
+  const [color, setColor] = useState("#ffffff");
   const [reset, setReset] = useState(false);
-  const [result, setResult] = useState<GeneratedImage>();
-  const [latexExpression, setLatexExpression] = useState<Array<string>>([]);
-  const [latexPosition, setLatexPosition] = useState({ x: 10, y: 200 });
+  const [results, setResults] = useState<GeneratedImage[]>([]);
   const [dictOfVars, setDictOfVars] = useState({});
+  const [mathJaxLoaded, setMathJaxLoaded] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [draggedItemId, setDraggedItemId] = useState<string>("");
 
   useEffect(() => {
     if (reset) {
       resetCanvas();
-      setLatexExpression([]);
-      setResult(undefined);
+      setResults([]);
+      setDictOfVars({});
       setReset(false);
     }
   }, [reset]);
 
   useEffect(() => {
-    if (latexExpression.length > 0 && window.MathJax) {
+    if (results.length > 0 && mathJaxLoaded && window.MathJax) {
       setTimeout(() => {
         window.MathJax.Hub.Queue(["Typeset", window.MathJax.Hub]);
-      }, 100);
+      }, 0);
     }
-  }, [latexExpression]);
-
-  useEffect(() => {
-    if (result) {
-      renderLatexToCanvas(result.expression, result.answer);
-    }
-  }, [result]);
+  }, [results, mathJaxLoaded]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -62,39 +59,48 @@ export default function Home() {
       }
     }
 
-    const script = document.createElement("script");
-    script.src =
-      "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/config/TeX-MML-AM_CHTML.js";
-    script.async = true;
-    document.head.appendChild(script);
+    // Load MathJax
+    if (!window.MathJax) {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.9/config/TeX-MML-AM_CHTML.js";
+      script.async = true;
+      document.head.appendChild(script);
 
-    script.onload = () => {
-      window.MathJax.Hub.Config({
-        tex2jax: {
-          inlineMath: [
-            ["$", "$"],
-            ["\\(", "\\)"],
-          ],
-        },
-      });
-    };
+      script.onload = () => {
+        window.MathJax.Hub.Config({
+          tex2jax: {
+            inlineMath: [
+              ["$", "$"],
+              ["\\(", "\\)"],
+            ],
+          },
+        });
+        setMathJaxLoaded(true);
+      };
 
-    return () => {
-      document.head.removeChild(script);
-    };
+      return () => {
+        if (document.head.contains(script)) {
+          document.head.removeChild(script);
+        }
+      };
+    } else {
+      setMathJaxLoaded(true);
+    }
   }, []);
 
-  const renderLatexToCanvas = (expression: string, answer: string) => {
-    const latex = `\\(\\LARGE ${expression} = ${answer}\\)`;
-    setLatexExpression([...latexExpression, latex]);
+  const generateUniqueId = () => {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
+  };
 
+  const getCanvasCenter = () => {
     const canvas = canvasRef.current;
     if (canvas) {
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-      }
+      return {
+        x: canvas.width / 2,
+        y: canvas.height / 2
+      };
     }
+    return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -128,57 +134,65 @@ export default function Home() {
 
   const sendData = async () => {
     const canvas = canvasRef.current;
-    if (canvas) {
+    if (!canvas) return;
+
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) {
+        console.error("VITE_API_URL environment variable is not set");
+        alert("API URL is not configured");
+        return;
+      }
+
       const response = await axios({
         method: "POST",
-        url: `${import.meta.env.VITE_API_URL}/calculate`,
+        url: `${apiUrl}/calculate`,
         data: {
           image: canvas.toDataURL("image/png"),
           dict_of_vars: dictOfVars,
         },
       });
 
-      const resp = await response.data;
+      const resp = response.data;
       console.log("Response: ", resp);
-      resp.forEach((data: Response) => {
-        if (data.assign === true) {
-          setDictOfVars({
-            ...dictOfVars,
-            [data.expr]: data.result,
-          });
-        }
-      });
-
-      const ctx = canvas?.getContext("2d");
-      const imageData = ctx!.getImageData(0, 0, canvas.width, canvas.height);
-      let minX = canvas.width,
-        minY = canvas.height,
-        maxX = 0,
-        maxY = 0;
-      for (let y = 0; y < canvas.height; y++) {
-        for (let x = 0; x < canvas.width; x++) {
-          if (imageData.data[(y * canvas.width + x) * 4 + 3] > 0) {
-            if (x < minX) minX = x;
-            if (x > maxX) maxX = x;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
+      
+      const calculations = resp.data || [];
+      
+      if (Array.isArray(calculations)) {
+        // Handle variable assignments
+        calculations.forEach((data: Response) => {
+          if (data.assign === true) {
+            setDictOfVars(prev => ({
+              ...prev,
+              [data.expr]: data.result,
+            }));
           }
-        }
-      }
+        });
 
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
+        // Get center position for new expressions
+        const centerPosition = getCanvasCenter();
 
-      setLatexPosition({ x: centerX, y: centerY });
+        // Create new results with individual positions
+        const newResults = calculations.map((data: Response) => ({
+          expression: data.expr,
+          answer: data.result,
+          id: generateUniqueId(),
+          position: { ...centerPosition }
+        }));
 
-      resp.data.forEach((data: Response) => {
+        // Add new results to existing ones
+        setResults(prev => [...prev, ...newResults]);
+
+        // Clear the canvas after processing
         setTimeout(() => {
-          setResult({
-            expression: data.expr,
-            answer: data.result,
-          });
-        }, 200);
-      });
+          resetCanvas();
+        }, 1000);
+      } else {
+        console.error("Expected array of calculations but got:", calculations);
+      }
+    } catch (error) {
+      console.error("Error sending data:", error);
+      alert("Failed to process calculation. Please check if the backend is running.");
     }
   };
 
@@ -191,6 +205,60 @@ export default function Home() {
       }
     }
   };
+
+  const handleMouseDown = (e: React.MouseEvent, itemId: string) => {
+    setIsDragging(true);
+    setDraggedItemId(itemId);
+    const rect = e.currentTarget.getBoundingClientRect();
+    setDragOffset({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (isDragging && draggedItemId) {
+      setResults(prev => prev.map(result => 
+        result.id === draggedItemId 
+          ? {
+              ...result,
+              position: {
+                x: e.clientX - dragOffset.x,
+                y: e.clientY - dragOffset.y
+              }
+            }
+          : result
+      ));
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setDraggedItemId("");
+  };
+
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, dragOffset, draggedItemId]);
+
+  // Clear results when page is refreshed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      setResults([]);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   return (
     <>
@@ -230,20 +298,22 @@ export default function Home() {
         onMouseUp={stopDrawing}
       />
 
-      {latexExpression &&
-        latexExpression.map((latex, index) => (
-          <Draggable
-            key={index}
-            defaultPosition={latexPosition}
-            onStop={(e, data) => {
-              setLatexPosition({ x: data.x, y: data.y });
-            }}
-          >
-            <div className="absolute p-2 text-white rounded shadow-md">
-              <div className="latex-content">{latex}</div>
-            </div>
-          </Draggable>
-        ))}
+      {results.map((result) => (
+        <div
+          key={result.id}
+          className="absolute p-2 text-white rounded shadow-md cursor-move select-none bg-black/50 backdrop-blur-sm"
+          style={{
+            left: result.position.x,
+            top: result.position.y,
+            zIndex: 30
+          }}
+          onMouseDown={(e) => handleMouseDown(e, result.id)}
+        >
+          <div className="latex-content">
+            {`${result.expression} = ${result.answer}`}
+          </div>
+        </div>
+      ))}
     </>
   );
 }
