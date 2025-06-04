@@ -4,7 +4,6 @@ An intelligent calculator application that combines traditional mathematical ope
 
 ## 🚀 Features
 
-- **Smart Calculator Interface**: Clean, intuitive calculator design for basic and advanced mathematical operations
 - **AI-Powered Calculations**: Leverage artificial intelligence for complex problem solving
 - **Real-time Computation**: Instant results as you type
 - **Expression Parsing**: Natural language mathematical expression support
@@ -65,42 +64,6 @@ An intelligent calculator application that combines traditional mathematical ope
 - Ask mathematical questions and receive intelligent responses
 - Handle advanced calculations that go beyond basic arithmetic
 
-### Keyboard Shortcuts
-- `0-9`: Number input
-- `+`, `-`, `*`, `/`: Basic operations
-- `Enter` or `=`: Calculate result
-- `Escape` or `C`: Clear calculator
-- `Backspace`: Delete last character
-
-## 🏗️ Project Structure
-
-```
-CalcAI/
-├── public/
-│   ├── index.html
-│   └── favicon.ico
-├── src/
-│   ├── components/
-│   │   ├── Calculator.tsx
-│   │   ├── Display.tsx
-│   │   ├── Button.tsx
-│   │   └── History.tsx
-│   ├── hooks/
-│   │   ├── useCalculator.ts
-│   │   └── useAI.ts
-│   ├── utils/
-│   │   ├── mathUtils.ts
-│   │   └── aiUtils.ts
-│   ├── styles/
-│   │   └── calculator.css
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── vite-env.d.ts
-├── package.json
-├── vite.config.ts
-├── tsconfig.json
-└── README.md
-```
 
 ## 🔧 Development
 
