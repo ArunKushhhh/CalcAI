@@ -310,7 +310,7 @@ export default function Home() {
 
   return (
     <>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Button
           onClick={() => setReset(true)}
           className="z-20 bg-black text-white cursor-pointer"
@@ -326,16 +326,6 @@ export default function Home() {
         >
           Undo
         </Button>
-        <Group className="z-20">
-          {SWATCHES.map((swatchColor: string) => (
-            <ColorSwatch
-              key={swatchColor}
-              color={swatchColor}
-              onClick={() => setColor(swatchColor)}
-              className="cursor-pointer"
-            />
-          ))}
-        </Group>
         <Button
           onClick={sendData}
           className="z-20 bg-black text-white cursor-pointer"
@@ -353,6 +343,17 @@ export default function Home() {
         onMouseOut={stopDrawing}
         onMouseUp={stopDrawing}
       />
+
+      <Group className="z-20 absolute bottom-10 left-1/2 transform -translate-x-1/2">
+        {SWATCHES.map((swatchColor: string) => (
+          <ColorSwatch
+            key={swatchColor}
+            color={swatchColor}
+            onClick={() => setColor(swatchColor)}
+            className="cursor-pointer"
+          />
+        ))}
+      </Group>
 
       {results.map((result) => (
         <div
